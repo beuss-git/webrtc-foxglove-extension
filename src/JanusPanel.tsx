@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useState, useCallback, useRef } from "react
 import { set } from "lodash";
 import { createRoot } from "react-dom/client";
 import { produce } from "immer";
-import Janus from "janus-gateway";
+import Janus, { JanusJS } from "janus-gateway";
 import adapter from "webrtc-adapter";
 
 enum ConnectionState {
@@ -48,8 +48,8 @@ function JanusStreamPanel({ context }: { context: PanelExtensionContext }): JSX.
   const [renderDone, setRenderDone] = useState<(() => void) | undefined>();
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const janusRef = useRef<any>(null);
-  const streamingRef = useRef<any>(null);
+  const janusRef = useRef<Janus | null>(null);
+  const streamingRef = useRef<JanusJS.PluginHandle | null>(null);
   const bitrateTimerRef = useRef<number | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
@@ -272,12 +272,12 @@ function JanusStreamPanel({ context }: { context: PanelExtensionContext }): JSX.
         log("Connected to Janus server, attaching plugin");
         updateStreamState({ connectionState: ConnectionState.ATTACHING });
 
-        janusRef.current.attach({
+        janusRef.current?.attach({
           plugin: "janus.plugin.streaming",
           opaqueId: "foxglovestreamingtest-" + Janus.randomString(12),
 
           // Success callback when plugin is attached
-          success: function (pluginHandle: any) {
+          success: function (pluginHandle) {
             log("Successfully attached to streaming plugin");
             streamingRef.current = pluginHandle;
             startStream();
@@ -301,16 +301,18 @@ function JanusStreamPanel({ context }: { context: PanelExtensionContext }): JSX.
             }
 
             // Handle session description protocol offer
-            if (jsep) {
+            if (jsep && streamingRef.current) {
               streamingRef.current.createAnswer({
                 jsep: jsep,
-                tracks: [{ type: 'data' }],
-                media: { audioSend: false, videoSend: false, data: true },
+                tracks: [{ type: 'data', capture: false }],
+                media: { audioSend: false, videoSend: false },
 
                 // Success callback for answer creation
                 success: function (jsep: any) {
-                  const body = { request: "start" };
-                  streamingRef.current.send({ message: body, jsep: jsep });
+                  if (streamingRef.current) {
+                    const body = { request: "start" };
+                    streamingRef.current.send({ message: body, jsep: jsep });
+                  }
                 },
 
                 // Error callback for WebRTC negotiation
@@ -379,7 +381,7 @@ function JanusStreamPanel({ context }: { context: PanelExtensionContext }): JSX.
 
                         if (bitrateTimerRef.current === null) {
                           const updateBitrate = () => {
-                            if (videoRef.current && videoRef.current.videoWidth) {
+                            if (videoRef.current && videoRef.current.videoWidth && streamingRef.current) {
                               try {
                                 const bitrate = streamingRef.current.getBitrate(mid);
                                 updateStreamState({
