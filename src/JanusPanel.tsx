@@ -334,11 +334,12 @@ function JanusStreamPanel({ context }: { context: PanelExtensionContext }): JSX.
                   videoStats: null
                 });
               }
+              log("Track " + track.id + " is off, skipping processing");
               return;
             }
 
             if (track.kind === "video") {
-              log("Received video track");
+              log("Received video track: " + track.id);
 
               // Use a single MediaStream instance and add/remove tracks as needed
               // This prevents "interrupted by new load request" errors
@@ -359,6 +360,7 @@ function JanusStreamPanel({ context }: { context: PanelExtensionContext }): JSX.
 
               // Only attempt to play if we haven't successfully connected yet
               if (!streamState.isConnected) {
+                log("Playing video track: " + track.id);
                 // Use a small timeout to let the browser process the new track
                 setTimeout(() => {
                   if (videoRef.current) {
@@ -381,6 +383,8 @@ function JanusStreamPanel({ context }: { context: PanelExtensionContext }): JSX.
                           });
                         }
                       });
+                  } else {
+                    log("Video element not found, cannot play track", "error");
                   }
                 }, 100);
               }
@@ -449,22 +453,25 @@ function JanusStreamPanel({ context }: { context: PanelExtensionContext }): JSX.
   useEffect(() => {
     updateStreamState({ connectionState: ConnectionState.INITIALIZING });
 
-    // Custom log handler to override Janus internal debugging
-    Janus.log = (...args) => {
-      if (state.stream.debug) {
-        log(`[Janus] ${args.join(' ')}`, "info");
-      }
+    const setupJanusLogHandlers = () => {
+      // Custom log handler to override Janus internal debugging
+      Janus.log = (...args) => {
+        if (state.stream.debug) {
+          log(`[Janus] ${args.join(' ')}`, "info");
+        }
+      };
+
+      Janus.error = (...args) => {
+        log(`[Janus Error] ${args.join(' ')}`, "error");
+      };
+
+      Janus.warn = (...args) => {
+        if (state.stream.debug) {
+          log(`[Janus Warning] ${args.join(' ')}`, "warn");
+        }
+      };
     };
 
-    Janus.error = (...args) => {
-      log(`[Janus Error] ${args.join(' ')}`, "error");
-    };
-
-    Janus.warn = (...args) => {
-      if (state.stream.debug) {
-        log(`[Janus Warning] ${args.join(' ')}`, "warn");
-      }
-    };
 
     // Initialize Janus library with proper error handling
     try {
@@ -472,6 +479,9 @@ function JanusStreamPanel({ context }: { context: PanelExtensionContext }): JSX.
         dependencies: Janus.useDefaultDependencies({ adapter: adapter }),
         debug: state.stream.debug ? "all" : false,
         callback: () => {
+
+          setupJanusLogHandlers();
+
           log("Janus library initialized");
           initJanusConnection();
         }
