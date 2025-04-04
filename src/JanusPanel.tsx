@@ -333,6 +333,11 @@ function JanusStreamPanel({ context }: { context: PanelExtensionContext }): JSX.
                   isConnected: false,
                   videoStats: null
                 });
+
+                if (bitrateTimerRef.current) {
+                  clearInterval(bitrateTimerRef.current);
+                  bitrateTimerRef.current = null;
+                }
               }
               log("Track " + track.id + " is off, skipping processing");
               return;
@@ -371,6 +376,30 @@ function JanusStreamPanel({ context }: { context: PanelExtensionContext }): JSX.
                           isConnected: true,
                           error: null
                         });
+
+                        if (bitrateTimerRef.current === null) {
+                          const updateBitrate = () => {
+                            if (videoRef.current && videoRef.current.videoWidth) {
+                              try {
+                                const bitrate = streamingRef.current.getBitrate(mid);
+                                updateStreamState({
+                                  videoStats: {
+                                    width: videoRef.current.videoWidth,
+                                    height: videoRef.current.videoHeight,
+                                    bitrate
+                                  }
+                                });
+                              } catch (e) {
+                                log("Error getting bitrate: " + String(e), "warn");
+                              }
+                            }
+                          };
+
+                          updateBitrate();
+
+                          bitrateTimerRef.current = window.setInterval(updateBitrate
+                            , 1000);
+                        }
                       })
                       .catch(function (error: any) {
                         // If it's just the interrupted error, we can ignore it as we'll try again
@@ -389,24 +418,6 @@ function JanusStreamPanel({ context }: { context: PanelExtensionContext }): JSX.
                 }, 100);
               }
 
-              if (bitrateTimerRef.current === null && streamState.isConnected) {
-                bitrateTimerRef.current = window.setInterval(function () {
-                  if (videoRef.current && videoRef.current.videoWidth) {
-                    try {
-                      const bitrate = streamingRef.current.getBitrate(mid);
-                      updateStreamState({
-                        videoStats: {
-                          width: videoRef.current.videoWidth,
-                          height: videoRef.current.videoHeight,
-                          bitrate
-                        }
-                      });
-                    } catch (e) {
-                      log("Error getting bitrate: " + String(e), "warn");
-                    }
-                  }
-                }, 1000) as unknown as number;
-              }
             }
           },
 
